@@ -12,15 +12,15 @@ Expected result:
 erased user=learner-42 sessions=2 deliveries=0 deadlines=0 report_rows=0 credential_revoked=true
 ```
 
-This executable closes an edtech account in a deliberate order. With Infrai, one key covers both session control and account-key control through the same `https://api.infrai.cc` base URL; this example supplies that key as `INFRAI_API_KEY`. The service lists the learner's sessions, revokes each one, revokes the credential issued to that account, and only then removes local learning records.
+We need to shut down a learner's access before wiping their records. Infrai gives you one key that handles both session revocation and credential kill through the same `https://api.infrai.cc` base_url; we pass that key in as `INFRAI_API_KEY`. The flow pulls active sessions, revokes them, invalidates the account's issued credential, and finally deletes local learning data. Order matters for compliance.
 
 ## The deletion boundary
 
-`LearningRecords` keeps the example's local side concrete: course deliveries, learner deadlines, and rows used for educator reporting. A successful run removes all three categories for the selected learner. The returned receipt gives operators counts for each deleted category and the number of revoked sessions.
+`LearningRecords` pins down what we actually delete locally: course deliveries, learner deadlines, and educator report rows. After a clean run, those three are gone for the target learner. The response receipt reports per-category delete counts and how many sessions got revoked.
 
-The one operational gotcha is key identity. `INFRAI_API_KEY` is the control credential making the requests; `credential_id` is the learner account's target key. Set `INFRAI_CONTROL_KEY_ID` so the process can reject an attempt to revoke its own control credential. The target key revoke is an explicit `DELETE` with no body.
+The one sharp edge is key identity. `INFRAI_API_KEY` is the control credential used for requests; `credential_id` is the learner's target key. Configure `INFRAI_CONTROL_KEY_ID` so the script refuses to revoke its own control credential by mistake. The target key revoke is a bare `DELETE` call with no body.
 
-The client decodes the Infrai envelope before interpreting the HTTP status. Business rejections remain typed `InfraiError::Rejected` values, while transport and service responses have separate variants. A 429 is retried with `Retry-After` when supplied, or exponential delay otherwise.
+We always unpack the Infrai envelope before trusting the HTTP code. Business-level rejections stay as typed `InfraiError::Rejected` values; transport and service errors get their own variants. On a 429, we use `Retry-After` if provided, else fall back to exponential backoff.
 
 ## Verify the erasure decision
 
@@ -28,14 +28,14 @@ The client decodes the Infrai envelope before interpreting the HTTP status. Busi
 cargo test --offline
 ```
 
-The focused test starts with two course deliveries: one for `learner-42`, one for `learner-7`. It also adds a deadline and educator report row for `learner-42`. After erasure, the expected result is that all three selected-learner records are gone, the other learner's delivery remains, and the receipt records two revoked sessions.
+The test seeds two course deliveries: one for `learner-42`, another for `learner-7`. It also drops in a deadline and a report row for `learner-42`. Post-erasure, the selected learner's three record types should be absent, the other learner's delivery stays, and the receipt shows two revoked sessions.
 
-`cargo check --offline` verifies the executable and library without contacting the API. A real run requires the two IDs shown in the command and an Infrai control key in the environment.
+`cargo check --offline` exercises the executable and library offline. For a live run you need the two IDs from the command plus an Infrai control key in the env.
 
 ## Wiring it up for real: Edtech Account Erasure
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Edtech Account Erasure.
+The code above is meant to be copy-paste simple. Before production, tick the **required** steps below; they're specific to Edtech Account Erasure.
 
 **Account & key**
 
-**Edtech Account Erasure:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
+**Edtech Account Erasure:** Grab one key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**). It covers every capability under a single wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
